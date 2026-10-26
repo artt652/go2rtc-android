@@ -22,22 +22,22 @@
 | `SHA256SUMS` | | контрольные суммы |
 | `LICENSE-go2rtc` | | лицензия go2rtc (MIT) |
 
-Архитектуру выбирайте по разрядности приложения, а не процессора: на ТВ-приставке `uname -m` может показать `aarch64`, а система и приложения там 32-битные. В Termux: `getprop ro.product.cpu.abi`.
+Архитектуру выбирайте по разрядности приложения, которое запускает go2rtc (Termux, KSWEB), а не процессора: на ТВ-приставке процессор 64-битный, а приложение может быть 32-битным — и `getprop ro.product.cpu.abi`, и `uname -m` покажут 64 бита. В Termux его архитектура — `dpkg --print-architecture` (`aarch64` → arm64, `arm` → arm, `x86_64` → amd64; `i686` не собирается). В KSWEB — разрядность его PHP: `<?php echo PHP_INT_SIZE * 8;` (64 → arm64 или amd64, 32 → arm).
 
 Теги релизов: `<тег go2rtc>-android<N>`, например `v1.9.15-android2`; `N` растёт при пересборке той же версии (изменился патч или сборка).
 
 ## Termux
 
+Одной командой, на любой архитектуре — скрипт сам выберет файл по архитектуре Termux, сверит SHA256 и поставит `go2rtc` в `$PREFIX/bin`:
+
 ```sh
-pkg install wget resolv-conf ffmpeg
-cd ~ && mkdir -p go2rtc && cd go2rtc
-V=v1.9.15-android2   # последний — на странице Releases
-wget https://github.com/artt652/go2rtc-android/releases/download/$V/go2rtc_android_arm64 \
-     https://github.com/artt652/go2rtc-android/releases/download/$V/SHA256SUMS
-sha256sum -c SHA256SUMS --ignore-missing
-mv go2rtc_android_arm64 $PREFIX/bin/go2rtc && chmod +x $PREFIX/bin/go2rtc
-go2rtc -version
+curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/install.sh | sh
+go2rtc -version   # go2rtc version 1.9.15+dirty.… android/arm64
 ```
+
+Конкретный релиз или другой каталог: `… | sh -s -- v1.9.15-android2` или `… | sh -s -- latest ~/bin`. Для службы и связки с ffmpeg: `pkg install resolv-conf ffmpeg termux-services`.
+
+Вручную — тот же порядок: выбрать файл по `dpkg --print-architecture`, скачать его и `SHA256SUMS` из [последнего релиза](../../releases/latest) (`https://github.com/artt652/go2rtc-android/releases/latest/download/<файл>`), `sha256sum -c SHA256SUMS --ignore-missing`, положить в `$PREFIX/bin/go2rtc`, `chmod +x`.
 
 Конфиг, служба `termux-services`, тестовые потоки и PiPup — как в инструкции по сборке в Termux; шаги сборки при этом не нужны.
 
@@ -49,6 +49,8 @@ go2rtc -version
 /system/bin/linker64 /data/data/ru.kslabs.ksweb/files/go2rtc/go2rtc -c go2rtc.yaml   # arm64, amd64
 /system/bin/linker   /data/data/ru.kslabs.ksweb/files/go2rtc/go2rtc -c go2rtc.yaml   # arm
 ```
+
+Файл — по разрядности PHP KSWEB (см. выше); загрузчик — `linker64` для 64-битной сборки, `linker` для 32-битной. Скачивать и раскладывать вручную в KSWEB неудобно (нет терминала) — это будет делать модуль MajorDoMo.
 
 ## Патчи
 
