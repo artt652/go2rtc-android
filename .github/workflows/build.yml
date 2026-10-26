@@ -183,7 +183,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir out
-          ndk=$(cat dist/*/ndk.txt | head -1)
+          ls -lR dist
+          ndkfiles=(dist/*/ndk.txt)
+          ndk=$(head -n 1 "${ndkfiles[0]}")
           for d in dist/go2rtc_android_*; do cp "$d/$(basename "$d")" out/; done
           cp src/LICENSE out/LICENSE-go2rtc
           (cd out && sha256sum go2rtc_android_* > SHA256SUMS && cat SHA256SUMS)
