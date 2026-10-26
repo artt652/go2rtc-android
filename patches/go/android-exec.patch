@@ -1,16 +1,19 @@
 diff --git a/src/os/exec_android.go b/src/os/exec_android.go
 new file mode 100644
-index 0000000..b6cf0a0
+index 0000000..c615f37
 --- /dev/null
 +++ b/src/os/exec_android.go
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,106 @@
 +// Patch from github.com/artt652/go2rtc-android (MIT), not part of Go.
 +
 +//go:build android
 +
 +package os
 +
-+import "syscall"
++import (
++	"sync/atomic"
++	"syscall"
++)
 +
 +// Apps that target Android 10+ (KSWEB, Termux builds that run programs through
 +// the system linker) may not execve files from their writable data directory:
@@ -18,12 +21,28 @@ index 0000000..b6cf0a0
 +// termux-exec does it: through the system linker, which accepts PIE programs
 +// passed as its first argument. Scripts (#!) are started through their
 +// interpreter, itself through the linker if it lives in the data directory.
++// After the first denial, files from the data directory are started through the
++// linker at once, without trying directly again.
 +func init() {
 +	androidExecFallback = androidLinkerExec
 +}
 +
++// androidLinkerFirst: a direct start of a file from the data directory was denied once.
++var androidLinkerFirst atomic.Bool
++
 +func androidLinkerExec(e error, name string, argv []string) (string, []string, bool) {
-+	if e != syscall.EACCES {
++	switch {
++	case e == nil:
++		if !androidLinkerFirst.Load() {
++			return "", nil, false
++		}
++	case e == syscall.EACCES:
++		lname, largv, ok := androidWrap(name, argv, 0)
++		if ok {
++			androidLinkerFirst.Store(true)
++		}
++		return lname, largv, ok
++	default:
 +		return "", nil, false
 +	}
 +	return androidWrap(name, argv, 0)
@@ -92,24 +111,34 @@ index 0000000..b6cf0a0
 +	return "", nil, false
 +}
 diff --git a/src/os/exec_posix.go b/src/os/exec_posix.go
-index 9f83db1..f1d4792 100644
+index 9f83db1..3bd708a 100644
 --- a/src/os/exec_posix.go
 +++ b/src/os/exec_posix.go
-@@ -13,6 +13,9 @@ import (
+@@ -13,6 +13,10 @@ import (
  	"syscall"
  )
  
-+// androidExecFallback (exec_android.go) retries a failed start through the Android system linker.
++// androidExecFallback (exec_android.go): start through the Android system linker —
++// with e == nil when direct starts are known to be denied, with e after a failed start.
 +var androidExecFallback func(e error, name string, argv []string) (string, []string, bool)
 +
  // The only signal values guaranteed to be present in the os package on all
  // systems are os.Interrupt (send the process an interrupt) and os.Kill (force
  // the process to exit). On Windows, sending os.Interrupt to a process with
-@@ -53,6 +56,11 @@ func startProcess(name string, argv []string, attr *ProcAttr) (p *Process, err e
+@@ -52,7 +56,19 @@ func startProcess(name string, argv []string, attr *ProcAttr) (p *Process, err e
+ 		sysattr.Files = append(sysattr.Files, f.Fd())
  	}
  
- 	pid, h, e := syscall.StartProcess(name, argv, sysattr)
-+	if e != nil && androidExecFallback != nil {
+-	pid, h, e := syscall.StartProcess(name, argv, sysattr)
++	execName, execArgv := name, argv
++	if androidExecFallback != nil {
++		// Android: once direct start was denied, go through the system linker at once
++		if lname, largv, ok := androidExecFallback(nil, name, argv); ok {
++			execName, execArgv = lname, largv
++		}
++	}
++	pid, h, e := syscall.StartProcess(execName, execArgv, sysattr)
++	if e != nil && androidExecFallback != nil && execName == name {
 +		if lname, largv, ok := androidExecFallback(e, name, argv); ok {
 +			pid, h, e = syscall.StartProcess(lname, largv, sysattr)
 +		}
