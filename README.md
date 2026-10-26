@@ -45,7 +45,7 @@ curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/install
 
 ### Конфиг
 
-Конфиг — `~/go2rtc/go2rtc.yaml`. Вместо `192.168.1.10` подставьте IP телефона: настройки Android → Wi-Fi → ваша сеть → IP-адрес (или «О телефоне» → «Общая информация»). Команда `ip` на Android 11+ не работает (`Cannot bind netlink socket: Permission denied`) — запрет netlink, тот же, из-за которого нужна эта сборка. Можно попробовать `ifconfig wlan0` (пакет `net-tools`): он спрашивает адрес без netlink.
+Конфиг — `~/go2rtc/go2rtc.yaml`. Вместо `192.168.1.10` подставьте IP телефона: настройки Android → Wi-Fi → ваша сеть → IP-адрес (или «О телефоне» → «Общая информация»). Команда `ip` на Android 11+ не работает (`Cannot bind netlink socket: Permission denied`) — запрет netlink, тот же, из-за которого нужна эта сборка.
 
 ```sh
 mkdir -p ~/go2rtc
