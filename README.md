@@ -24,14 +24,14 @@
 
 Архитектуру выбирайте по разрядности приложения, а не процессора: на ТВ-приставке `uname -m` может показать `aarch64`, а система и приложения там 32-битные. В Termux: `getprop ro.product.cpu.abi`.
 
-Теги релизов: `<тег go2rtc>-android<N>`, например `v1.9.15-android1`; `N` растёт при пересборке той же версии (изменился патч или сборка).
+Теги релизов: `<тег go2rtc>-android<N>`, например `v1.9.15-android2`; `N` растёт при пересборке той же версии (изменился патч или сборка).
 
 ## Termux
 
 ```sh
 pkg install wget resolv-conf ffmpeg
 cd ~ && mkdir -p go2rtc && cd go2rtc
-V=v1.9.15-android1
+V=v1.9.15-android2   # последний — на странице Releases
 wget https://github.com/artt652/go2rtc-android/releases/download/$V/go2rtc_android_arm64 \
      https://github.com/artt652/go2rtc-android/releases/download/$V/SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing
