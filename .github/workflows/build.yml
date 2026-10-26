@@ -39,7 +39,7 @@ concurrency:
 jobs:
   plan:
     name: Что собирать
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       tag: ${{ steps.plan.outputs.tag }}
       release: ${{ steps.plan.outputs.release }}
@@ -80,7 +80,7 @@ jobs:
     name: android/${{ matrix.goarch }}
     needs: plan
     if: needs.plan.outputs.build == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: true
       matrix:
@@ -96,17 +96,17 @@ jobs:
             cc: x86_64-linux-android24-clang
             interp: /system/bin/linker64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: self
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: AlexxIT/go2rtc
           ref: ${{ needs.plan.outputs.tag }}
           path: src
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: src/go.mod
           cache-dependency-path: src/go.sum
@@ -148,7 +148,7 @@ jobs:
       - name: Проверка бинарника
         run: bash self/scripts/check-elf.sh "go2rtc_android_${{ matrix.goarch }}" "${{ matrix.interp }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: go2rtc_android_${{ matrix.goarch }}
           path: |
@@ -159,19 +159,19 @@ jobs:
   release:
     name: Релиз
     needs: [plan, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: self
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: AlexxIT/go2rtc
           ref: ${{ needs.plan.outputs.tag }}
           path: src
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
 
