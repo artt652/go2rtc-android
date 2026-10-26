@@ -45,7 +45,19 @@ curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/install
 
 ### Конфиг
 
-Конфиг — `~/go2rtc/go2rtc.yaml`. Вместо `192.168.1.10` подставьте IP телефона: настройки Android → Wi-Fi → ваша сеть → IP-адрес (или «О телефоне» → «Общая информация»). Команда `ip` на Android 11+ не работает (`Cannot bind netlink socket: Permission denied`) — запрет netlink, тот же, из-за которого нужна эта сборка.
+Конфиг — `~/go2rtc/go2rtc.yaml`. Вместо `192.168.1.10` подставьте IP телефона:
+
+```sh
+curl -s -o /dev/null -w '%{local_ip}\n' http://1.1.1.1
+```
+
+Это адрес, с которого телефон выходит в сеть: при включённом Wi-Fi — адрес в домашней сети (с VPN — адрес VPN). Нужен интернет. Без интернета, если установлен PHP:
+
+```sh
+php -r '$s=stream_socket_client("udp://8.8.8.8:53");echo strtok(stream_socket_get_name($s,false),":"),"\n";'
+```
+
+(UDP-сокет только выбирает маршрут, пакеты не уходят.) Или в настройках Android: Wi-Fi → ваша сеть → IP-адрес. Команды `ip` и `ifconfig` на Android 10–11+ адрес не покажут: приложениям закрыты netlink и `/proc/net/dev`.
 
 ```sh
 mkdir -p ~/go2rtc
