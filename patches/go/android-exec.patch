@@ -1,0 +1,119 @@
+diff --git a/src/os/exec_android.go b/src/os/exec_android.go
+new file mode 100644
+index 0000000..b6cf0a0
+--- /dev/null
++++ b/src/os/exec_android.go
+@@ -0,0 +1,87 @@
++// Patch from github.com/artt652/go2rtc-android (MIT), not part of Go.
++
++//go:build android
++
++package os
++
++import "syscall"
++
++// Apps that target Android 10+ (KSWEB, Termux builds that run programs through
++// the system linker) may not execve files from their writable data directory:
++// SELinux denies it with EACCES (W^X). Such files are started the way
++// termux-exec does it: through the system linker, which accepts PIE programs
++// passed as its first argument. Scripts (#!) are started through their
++// interpreter, itself through the linker if it lives in the data directory.
++func init() {
++	androidExecFallback = androidLinkerExec
++}
++
++func androidLinkerExec(e error, name string, argv []string) (string, []string, bool) {
++	if e != syscall.EACCES {
++		return "", nil, false
++	}
++	return androidWrap(name, argv, 0)
++}
++
++func androidWrap(name string, argv []string, depth int) (string, []string, bool) {
++	if depth > 2 || len(name) < 6 || name[:6] != "/data/" {
++		return "", nil, false
++	}
++	f, err := Open(name)
++	if err != nil {
++		return "", nil, false
++	}
++	var head [256]byte
++	n, _ := f.Read(head[:])
++	f.Close()
++	b := head[:n]
++	rest := []string{}
++	if len(argv) > 1 {
++		rest = argv[1:]
++	}
++	// ELF: e_ident[EI_CLASS] 2 = 64-bit
++	if n >= 5 && b[0] == 0x7f && b[1] == 'E' && b[2] == 'L' && b[3] == 'F' {
++		linker := "/system/bin/linker"
++		if b[4] == 2 {
++			linker = "/system/bin/linker64"
++		}
++		return linker, append([]string{linker, name}, rest...), true
++	}
++	// script: "#!interpreter [one argument]"
++	if n >= 3 && b[0] == '#' && b[1] == '!' {
++		line := b[2:]
++		for i, c := range line {
++			if c == '\n' {
++				line = line[:i]
++				break
++			}
++		}
++		var parts []string
++		start := -1
++		for i := 0; i <= len(line); i++ {
++			if i == len(line) || line[i] == ' ' || line[i] == '\t' || line[i] == '\r' {
++				if start >= 0 {
++					parts = append(parts, string(line[start:i]))
++					start = -1
++				}
++			} else if start < 0 {
++				start = i
++			}
++		}
++		if len(parts) == 0 {
++			return "", nil, false
++		}
++		interp := parts[0]
++		args := []string{interp}
++		if len(parts) > 1 {
++			args = append(args, parts[1])
++		}
++		args = append(args, name)
++		args = append(args, rest...)
++		if lname, largv, ok := androidWrap(interp, args, depth+1); ok {
++			return lname, largv, true
++		}
++		return interp, args, true
++	}
++	return "", nil, false
++}
+diff --git a/src/os/exec_posix.go b/src/os/exec_posix.go
+index 9f83db1..f1d4792 100644
+--- a/src/os/exec_posix.go
++++ b/src/os/exec_posix.go
+@@ -13,6 +13,9 @@ import (
+ 	"syscall"
+ )
+ 
++// androidExecFallback (exec_android.go) retries a failed start through the Android system linker.
++var androidExecFallback func(e error, name string, argv []string) (string, []string, bool)
++
+ // The only signal values guaranteed to be present in the os package on all
+ // systems are os.Interrupt (send the process an interrupt) and os.Kill (force
+ // the process to exit). On Windows, sending os.Interrupt to a process with
+@@ -53,6 +56,11 @@ func startProcess(name string, argv []string, attr *ProcAttr) (p *Process, err e
+ 	}
+ 
+ 	pid, h, e := syscall.StartProcess(name, argv, sysattr)
++	if e != nil && androidExecFallback != nil {
++		if lname, largv, ok := androidExecFallback(e, name, argv); ok {
++			pid, h, e = syscall.StartProcess(lname, largv, sysattr)
++		}
++	}
+ 
+ 	// Make sure we don't run the finalizers of attr.Files.
+ 	runtime.KeepAlive(attr)

@@ -1,6 +1,6 @@
 # go2rtc для Android
 
-Готовые сборки [go2rtc](https://github.com/AlexxIT/go2rtc) для Android 7+ — Termux и KSWEB. Код go2rtc берётся из оригинала по тегу релиза, без изменений, кроме патчей из [`patches/`](patches). Собирает GitHub Actions; сборки — в [Releases](../../releases).
+Готовые сборки [go2rtc](https://github.com/AlexxIT/go2rtc) для Android 7+ — Termux и KSWEB. Код go2rtc берётся из оригинала по тегу релиза, без изменений, кроме патчей из [`patches/`](patches) (в go2rtc и в стандартную библиотеку Go). Собирает GitHub Actions; сборки — в [Releases](../../releases).
 
 ## Зачем, если у go2rtc есть `go2rtc_linux_arm64`
 
@@ -45,19 +45,7 @@ curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/install
 
 ### Конфиг
 
-Конфиг — `~/go2rtc/go2rtc.yaml`. Вместо `192.168.1.10` подставьте IP телефона:
-
-```sh
-curl -s -o /dev/null -w '%{local_ip}\n' http://1.1.1.1
-```
-
-Это адрес, с которого телефон выходит в сеть: при включённом Wi-Fi — адрес в домашней сети (с VPN — адрес VPN). Нужен интернет. Без интернета, если установлен PHP:
-
-```sh
-php -r '$s=stream_socket_client("udp://8.8.8.8:53");echo strtok(stream_socket_get_name($s,false),":"),"\n";'
-```
-
-(UDP-сокет только выбирает маршрут, пакеты не уходят.) Или в настройках Android: Wi-Fi → ваша сеть → IP-адрес. Команды `ip` и `ifconfig` на Android 10–11+ адрес не покажут: приложениям закрыты netlink и `/proc/net/dev`.
+Конфиг — `~/go2rtc/go2rtc.yaml`:
 
 ```sh
 mkdir -p ~/go2rtc
@@ -68,8 +56,6 @@ rtsp:
   listen: ":8554"
 webrtc:
   listen: ":8555"
-  candidates:
-    - 192.168.1.10:8555
 
 streams:
   test: ffmpeg:virtual?video&size=720#video=h264
@@ -84,7 +70,22 @@ EOF
 | 8554 (TCP) | RTSP-сервер: `rtsp://IP:8554/<поток>` |
 | 8555 (TCP и UDP) | медиапоток WebRTC |
 
-`candidates` задаёт адрес для WebRTC явно, чтобы не зависеть от автоопределения на Android. Если порт уже занят другой программой, поменяйте его в конфиге.
+Свой адрес в домашней сети go2rtc этой сборки находит сам (обход запрета netlink), `webrtc: candidates` для неё не нужен — только для доступа снаружи (внешний IP, `stun:8555`, домен; см. [документацию go2rtc](https://github.com/AlexxIT/go2rtc/blob/master/internal/webrtc/README.md)). Если порт уже занят другой программой, поменяйте его в конфиге.
+
+**IP телефона** — для адресов ниже (`192.168.1.10` в примерах):
+
+```sh
+curl -s -o /dev/null -w '%{local_ip}\n' http://1.1.1.1
+```
+
+Это адрес, с которого телефон выходит в сеть: при включённом Wi-Fi — адрес в домашней сети (с VPN — адрес VPN). Нужен интернет. Без интернета, если установлен PHP:
+
+```sh
+php -r '$s=stream_socket_client("udp://8.8.8.8:53");echo strtok(stream_socket_get_name($s,false),":"),"\n";'
+```
+
+(UDP-сокет только выбирает маршрут, пакеты не уходят.) Или в настройках Android: Wi-Fi → ваша сеть → IP-адрес. Команды `ip` и `ifconfig` на Android 10–11+ адрес не покажут: приложениям закрыты netlink и `/proc/net/dev`.
+
 
 Тестовые потоки не нагружают телефон, пока их никто не смотрит: ffmpeg запускается только при подключении.
 
@@ -181,27 +182,28 @@ rm -rf ~/go2rtc                        # конфиг — если больше 
 
 ```sh
 pkg install golang git
-cd ~ && rm -rf go2rtc-src
+cd ~ && rm -rf go2rtc-src go2rtc-android
 git clone --depth 1 --branch v1.9.15 https://github.com/AlexxIT/go2rtc go2rtc-src
-cd go2rtc-src
-curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/patches/restart.patch | git apply -v
-CGO_ENABLED=1 go build -trimpath -ldflags "-s -w -checklinkname=0" -o $PREFIX/bin/go2rtc .
+git clone --depth 1 https://github.com/artt652/go2rtc-android
+bash go2rtc-android/scripts/build.sh go2rtc-src $PREFIX/bin/go2rtc
 go2rtc -version
 ```
 
-Ожидаемый ответ: `go2rtc version 1.9.15+dirty.… android/arm64`. Пометка `dirty` значит только, что исходники изменены патчем. До v1.9.15 перед сборкой нужно ещё `rm pkg/alsa/device/asound_arch.c pkg/v4l2/device/videodev2_arch.c` (у них не было `//go:build ignore`). После сборки место освобождает `go clean -modcache`.
+`scripts/build.sh` — та же сборка, что в релизах: накладывает патчи (см. «Патчи»; патч Go — через `go build -overlay`, установленный пакет `golang` не меняется), убирает два вспомогательных `.c`-файла у версий до v1.9.15 и собирает с флагами ниже. Ожидаемый ответ: `go2rtc version 1.9.15+dirty.… android/arm64`; пометка `dirty` значит только, что исходники изменены патчем. После сборки место освобождает `go clean -modcache`.
 
 | Флаг | Зачем |
 |---|---|
 | `CGO_ENABLED=1` | без cgo библиотека anet не определяет версию Android, и WebRTC падает с `netlinkrib: permission denied`; DNS — через систему |
 | `-checklinkname=0` | anet обращается к `net.zoneCache` через `go:linkname`; Go 1.23+ без флага останавливает сборку: `invalid reference to net.zoneCache` |
 | `-s -w`, `-trimpath` | меньше размер, без отладочной информации и локальных путей |
+| `-extldflags=-Wl,-z,max-page-size=16384` | сегменты по 16 КБ — для устройств с такими страницами памяти (Android 15+) |
 
 ### Типичные ошибки
 
 | Ошибка | Причина | Решение |
 |---|---|---|
 | `has unexpected e_type: 2` | запущен релизный `go2rtc_linux_arm64` | поставить сборку отсюда |
+| `streams: fork/exec /data/data/com.termux/files/usr/bin/ffmpeg: permission denied` | Android запрещает запуск файлов из каталога приложения напрямую, а Go запускает программы мимо termux-exec | сборка `v1.9.15-android3` и новее (патч `go/android-exec.patch`) |
 | удалённые потоки по имени хоста не открываются | сборка без cgo, не находит DNS | поставить сборку отсюда; в Termux — пакет `resolv-conf` |
 | `failed to create network: route ip+net: netlinkrib: permission denied` | сборка без cgo: anet не определил версию Android | поставить сборку отсюда или собрать с `CGO_ENABLED=1` |
 | `link: github.com/wlynxg/anet: invalid reference to net.zoneCache` | своя сборка: Go 1.23+ запрещает `go:linkname` к внутренним символам | флаг `-ldflags "-checklinkname=0"` |
@@ -209,7 +211,7 @@ go2rtc -version
 | `fail: go2rtc: unable to change to service directory` | не задана `SVDIR`, не запущен `runsvdir` | перезапустить Termux или `source $PREFIX/etc/profile.d/start-services.sh` |
 | `[api] restart … failed, exiting error="permission denied"` | Android запрещает go2rtc перезапустить себя | это не ошибка: go2rtc завершается, служба запускает его заново |
 | после правки конфига ничего не изменилось | конфиг читается только при старте | `sv restart go2rtc` |
-| WebRTC: окно пустое, а снимки есть | не тот адрес в `candidates` или закрыт UDP 8555 | проверить `candidates` и журнал go2rtc |
+| WebRTC: окно пустое, а снимки есть | закрыт UDP 8555 или в конфиге задан неверный `candidates` | проверить журнал go2rtc, убрать `candidates` |
 | нет звука через RTSP | RTSP-клиент получает только первую звуковую дорожку (Opus) | отдельный поток с `#audio=aac` |
 
 ## KSWEB
@@ -227,14 +229,15 @@ go2rtc -version
 
 | Патч | Что делает |
 |---|---|
-| [`restart.patch`](patches/restart.patch) | Android не даёт процессу перезапустить себя через `execve` (`permission denied`), и «Save» в веб-интерфейсе молча не применяет конфиг. Патч пишет ошибку в журнал и завершает go2rtc — его запускает заново служба (termux-services или другая программа, которая следит за go2rtc). |
+| [`go2rtc/restart.patch`](patches/go2rtc/restart.patch) | Android не даёт процессу перезапустить себя через `execve` (`permission denied`), и «Save» в веб-интерфейсе молча не применяет конфиг. Патч пишет ошибку в журнал и завершает go2rtc — его запускает заново служба (termux-services или другая программа, которая следит за go2rtc). |
+| [`go/android-exec.patch`](patches/go/android-exec.patch) | В стандартную библиотеку Go (`os`), через `go build -overlay`. Приложениям под Android 10+ (Termux, где программы идут через системный загрузчик, KSWEB) нельзя запускать файлы из своего каталога напрямую: `fork/exec …/ffmpeg: permission denied`. termux-exec обходит это для обычных программ, но Go запускает процессы своими системными вызовами, мимо него. Патч делает то же, что termux-exec: если запуск файла из `/data/…` отказан (`EACCES`), повторяет его через `/system/bin/linker64` (`linker` для 32-битных), скрипты `#!` — через их интерпретатор. Затрагивает все запуски из go2rtc: ffmpeg, `exec:`, `echo:`. |
 
 ## Как собирается
 
 [`.github/workflows/build.yml`](.github/workflows/build.yml):
 
 - **Когда:** раз в сутки — если вышел новый релиз go2rtc, а у нас его ещё нет; вручную (Actions → Build go2rtc for Android → Run workflow: любой тег, «force» — пересобрать); при изменении патчей, скриптов или workflow — пересборка последнего релиза. GitHub выключает расписание после 60 дней без активности в репозитории — тогда хватит ручного запуска.
-- **Как:** исходники `AlexxIT/go2rtc` по тегу, патчи, Go из `go.mod` go2rtc, `CC` — clang из Android NDK для своей архитектуры (API 24), `-trimpath -ldflags "-s -w -checklinkname=0"`, сегменты по 16 КБ. `-checklinkname=0` нужен библиотеке anet (обращается к `net.zoneCache`).
+- **Как:** исходники `AlexxIT/go2rtc` по тегу и [`scripts/build.sh`](scripts/build.sh) (та же сборка, что в Termux): патчи go2rtc, патч Go через `-overlay`, Go из `go.mod` go2rtc, `CC` — clang из Android NDK для своей архитектуры (API 24), `-trimpath -ldflags "-s -w -checklinkname=0"`, сегменты по 16 КБ. `-checklinkname=0` нужен библиотеке anet (обращается к `net.zoneCache`).
 - **Проверка без устройства** ([`scripts/check-elf.sh`](scripts/check-elf.sh)): PIE, интерпретатор `/system/bin/linker64` (`linker` для arm), зависимости — только системные библиотеки Android, нет TEXTREL, выравнивание сегментов 64-битных сборок ≥ 16 КБ.
 - Если патч не наложился на новую версию go2rtc, сборка падает и релиз не выходит.
 
