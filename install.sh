@@ -35,17 +35,29 @@ fi
 tmp=$(mktemp -d "${TMPDIR:-/data/data/com.termux/files/usr/tmp}/go2rtc.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
+# get URL ФАЙЛ [progress]: с полосой прогресса для большого файла; ожидание соединения 20 с, 3 повтора
 get() {
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL -o "$2" "$1"
+    if [ "${3:-}" = progress ]; then
+      curl -fL --connect-timeout 20 --retry 3 --retry-delay 2 --progress-bar -o "$2" "$1"
+    else
+      curl -fsSL --connect-timeout 20 --retry 3 --retry-delay 2 -o "$2" "$1"
+    fi
   else
-    wget -q -O "$2" "$1"
+    if [ "${3:-}" = progress ]; then
+      wget -q --show-progress -T 20 -t 3 -O "$2" "$1"
+    else
+      wget -q -T 20 -t 3 -O "$2" "$1"
+    fi
   fi
 }
 
-echo "go2rtc-android: $arch → $asset ($VERSION)"
-get "$url/$asset" "$tmp/$asset"
+echo "go2rtc-android: архитектура $arch → $asset, релиз $VERSION"
+echo "go2rtc-android: контрольные суммы…"
 get "$url/SHA256SUMS" "$tmp/SHA256SUMS"
+echo "go2rtc-android: скачиваю $asset (~20 МБ) с $url"
+get "$url/$asset" "$tmp/$asset" progress
+echo "go2rtc-android: проверка SHA256…"
 (cd "$tmp" && grep " $asset\$" SHA256SUMS | sha256sum -c -)
 
 mkdir -p "$DEST"
