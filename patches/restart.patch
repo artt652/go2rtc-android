@@ -1,0 +1,19 @@
+diff --git a/internal/api/api.go b/internal/api/api.go
+index dfb6511..1524532 100644
+--- a/internal/api/api.go
++++ b/internal/api/api.go
+@@ -275,7 +275,13 @@ func restartHandler(w http.ResponseWriter, r *http.Request) {
+ 
+ 	log.Debug().Msgf("[api] restart %s", path)
+ 
+-	go syscall.Exec(path, os.Args, os.Environ())
++	// Android: a process cannot exec itself (permission denied) - log the
++	// error and exit, the supervisor (termux-services, MajorDoMo) restarts it
++	go func() {
++		err := syscall.Exec(path, os.Args, os.Environ())
++		log.Error().Err(err).Msgf("[api] restart %s failed, exiting", path)
++		os.Exit(0)
++	}()
+ }
+ 
+ func logHandler(w http.ResponseWriter, r *http.Request) {

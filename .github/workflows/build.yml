@@ -1,0 +1,212 @@
+# Сборка go2rtc для Android (Termux, KSWEB): исходники AlexxIT/go2rtc по тегу + patches/*.patch,
+# GOOS=android, cgo, Android NDK (API 24), архитектуры arm64, arm, amd64. Релиз: <тег go2rtc>-android<N>.
+#
+# Когда собирается:
+#   - раз в сутки: вышел новый релиз go2rtc, а у нас его ещё нет;
+#   - вручную (Actions → Run workflow): любой тег, «force» — пересобрать уже выпущенный;
+#   - изменились патчи, скрипты или этот файл — пересборка последнего релиза go2rtc (N+1).
+# GitHub выключает расписание публичного репозитория после 60 дней без активности —
+# тогда хватит ручного запуска или любого коммита.
+name: Build go2rtc for Android
+
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Тег go2rtc (vX.Y.Z); пусто — последний релиз'
+        required: false
+        default: ''
+      force:
+        description: 'Собрать, даже если релиз для этого тега уже есть'
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - 'patches/**'
+      - 'scripts/**'
+      - '.github/workflows/build.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Что собирать
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      release: ${{ steps.plan.outputs.release }}
+      build: ${{ steps.plan.outputs.build }}
+    steps:
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          INPUT_FORCE: ${{ github.event.inputs.force }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-}"
+          if [ -z "$tag" ]; then
+            tag=$(gh api repos/AlexxIT/go2rtc/releases/latest --jq .tag_name)
+          fi
+          case "$tag" in v[0-9]*) ;; *) echo "::error::странный тег: $tag"; exit 1 ;; esac
+          # наши релизы этого тега: <тег>-android<N>
+          last=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName --jq '.[].tagName' \
+            | sed -n "s/^${tag//./\\.}-android\([0-9][0-9]*\)$/\1/p" | sort -n | tail -1)
+          build=false
+          if [ -z "$last" ]; then
+            build=true; n=1
+          elif [ "$EVENT" = "push" ] || [ "${INPUT_FORCE:-false}" = "true" ]; then
+            build=true; n=$((last + 1))
+          else
+            n=$last
+          fi
+          echo "go2rtc $tag, наш последний: ${last:-нет}, собирать: $build"
+          {
+            echo "tag=$tag"
+            echo "release=$tag-android$n"
+            echo "build=$build"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: android/${{ matrix.goarch }}
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - goarch: arm64
+            cc: aarch64-linux-android24-clang
+            interp: /system/bin/linker64
+          - goarch: arm
+            goarm: '7'
+            cc: armv7a-linux-androideabi24-clang
+            interp: /system/bin/linker
+          - goarch: amd64
+            cc: x86_64-linux-android24-clang
+            interp: /system/bin/linker64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: self
+
+      - uses: actions/checkout@v4
+        with:
+          repository: AlexxIT/go2rtc
+          ref: ${{ needs.plan.outputs.tag }}
+          path: src
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+          cache-dependency-path: src/go.sum
+
+      - name: Патчи
+        working-directory: src
+        run: |
+          set -euo pipefail
+          for p in ../self/patches/*.patch; do
+            echo "== $p"
+            git apply --verbose "$p"
+          done
+          # до v1.9.15 у этих вспомогательных файлов не было «//go:build ignore», и сборка с cgo на них падала
+          for f in pkg/alsa/device/asound_arch.c pkg/v4l2/device/videodev2_arch.c; do
+            if [ -f "$f" ] && ! grep -q 'go:build ignore' "$f"; then rm -v "$f"; fi
+          done
+
+      - name: Сборка
+        working-directory: src
+        env:
+          CGO_ENABLED: '1'
+          GOOS: android
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+        run: |
+          set -euo pipefail
+          ndk="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_HOME:-}}"
+          [ -d "$ndk" ] || { echo "::error::нет Android NDK"; exit 1; }
+          export CC="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.cc }}"
+          echo "NDK: $(grep Pkg.Revision "$ndk/source.properties")"
+          go version
+          # -checklinkname=0: библиотека wlynxg/anet (обход запрета netlink на Android 11+) обращается к net.zoneCache;
+          # сегменты по 16 КБ — для устройств с такими страницами памяти (Android 15+)
+          go build -trimpath \
+            -ldflags "-s -w -checklinkname=0 -extldflags=-Wl,-z,max-page-size=16384" \
+            -o "../go2rtc_android_${{ matrix.goarch }}" .
+          echo "$(grep Pkg.Revision "$ndk/source.properties" | cut -d= -f2 | tr -d ' ')" > ../ndk.txt
+
+      - name: Проверка бинарника
+        run: bash self/scripts/check-elf.sh "go2rtc_android_${{ matrix.goarch }}" "${{ matrix.interp }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: go2rtc_android_${{ matrix.goarch }}
+          path: |
+            go2rtc_android_${{ matrix.goarch }}
+            ndk.txt
+          if-no-files-found: error
+
+  release:
+    name: Релиз
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: self
+
+      - uses: actions/checkout@v4
+        with:
+          repository: AlexxIT/go2rtc
+          ref: ${{ needs.plan.outputs.tag }}
+          path: src
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Публикация
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          RELEASE: ${{ needs.plan.outputs.release }}
+        run: |
+          set -euo pipefail
+          mkdir out
+          ndk=$(cat dist/*/ndk.txt | head -1)
+          for d in dist/go2rtc_android_*; do cp "$d/$(basename "$d")" out/; done
+          cp src/LICENSE out/LICENSE-go2rtc
+          (cd out && sha256sum go2rtc_android_* > SHA256SUMS && cat SHA256SUMS)
+          gover=$(grep -m1 '^go ' src/go.mod | cut -d' ' -f2)
+          patches=$(cd self/patches && ls *.patch | sed 's/^/- `/; s/$/`/')
+          cat > notes.md <<EOF
+          go2rtc [$TAG](https://github.com/AlexxIT/go2rtc/releases/tag/$TAG) для Android 7+ (Termux, KSWEB).
+
+          | Файл | Архитектура |
+          |---|---|
+          | \`go2rtc_android_arm64\` | arm64-v8a — большинство телефонов и планшетов |
+          | \`go2rtc_android_arm\` | armeabi-v7a — старые телефоны, ТВ-приставки с 32-битной системой |
+          | \`go2rtc_android_amd64\` | x86_64 — эмуляторы, Android на ПК |
+
+          Сборка: \`GOOS=android\`, \`CGO_ENABLED=1\`, Android NDK $ndk (API 24), Go из \`go.mod\` go2rtc ($gover),
+          \`-ldflags "-s -w -checklinkname=0"\`, сегменты по 16 КБ. Код go2rtc — без изменений, кроме патчей:
+          $patches
+
+          Проверка: \`sha256sum -c SHA256SUMS\`. Лицензия go2rtc — \`LICENSE-go2rtc\` (MIT).
+          EOF
+          gh release create "$RELEASE" out/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "go2rtc $TAG для Android ($RELEASE)" \
+            --notes-file notes.md \
+            --latest
