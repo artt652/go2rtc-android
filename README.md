@@ -30,16 +30,22 @@
 
 ### Установка
 
-Одной командой, на любой архитектуре — скрипт сам выберет файл по архитектуре Termux, сверит SHA256 и поставит `go2rtc` в `$PREFIX/bin`:
-
 ```sh
-pkg install curl resolv-conf ffmpeg termux-services
+pkg install curl resolv-conf ffmpeg
 curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/install.sh | sh
 ```
 
-В конце скрипт выводит `go2rtc version 1.9.15… android/arm64` (или `arm`, `amd64`). `ffmpeg` нужен для источников `ffmpeg:` и перекодирования, `termux-services` — для службы ниже.
+Скрипт сам выберет файл по архитектуре Termux, сверит SHA256 и поставит `go2rtc` в `$PREFIX/bin`. Потом спросит, как запускать go2rtc:
 
-Конкретный релиз или другой каталог: `… | sh -s -- v1.9.15-android2` или `… | sh -s -- latest ~/bin`.
+| Выбор | Что делает |
+|---|---|
+| **1 — вручную** (по умолчанию, Enter) | простая установка: только программа; запуск и остановка — командами ниже |
+| **2 — служба termux-services** | go2rtc запускается вместе с Termux и поднимается заново, если завершился; нужен пакет `termux-services` |
+| **3 — Termux:Boot** | go2rtc запускается при загрузке телефона; нужно приложение Termux:Boot |
+
+Выбор без вопроса — параметром: `… | sh -s -- --simple`, `--service` или `--boot`. При повторном запуске (обновлении) скрипт по умолчанию оставляет текущий способ. Прочие параметры: `--version v1.9.15-android4` — конкретный релиз, `--dir ~/bin` — другой каталог, `--uninstall` — удаление (см. ниже).
+
+`ffmpeg` нужен для источников `ffmpeg:`, `exec:` с ffmpeg и перекодирования. В конце скрипт выводит `go2rtc version 1.9.15… android/arm64` (или `arm`, `amd64`).
 
 Вручную — тот же порядок: выбрать файл по `dpkg --print-architecture`, скачать его и `SHA256SUMS` из [последнего релиза](../../releases/latest) (`https://github.com/artt652/go2rtc-android/releases/latest/download/<файл>`), `sha256sum -c SHA256SUMS --ignore-missing`, положить в `$PREFIX/bin/go2rtc`, `chmod +x`.
 
@@ -101,26 +107,43 @@ php -r '$s=stream_socket_client("udp://8.8.8.8:53");echo strtok(stream_socket_ge
   door_text: ffmpeg:door#video=h264#drawtext=x=10:y=10:fontsize=28:fontcolor=white:box=1:boxcolor=black@0.5:fontfile=/system/fonts/Roboto-Regular.ttf:text='Входная дверь %{localtime\:%H\:%M\:%S}'
 ```
 
-go2rtc читает конфиг только при старте: после правки — `sv restart go2rtc` или «Save» в веб-интерфейсе (go2rtc завершится и служба запустит его заново — см. «Патчи»).
+go2rtc читает конфиг только при старте: после правки его нужно перезапустить (см. ниже для своего способа запуска). «Save» в веб-интерфейсе сохраняет конфиг и завершает go2rtc (на Android он не может перезапустить себя — см. «Патчи»): служба и Termux:Boot запускают его заново сами, при ручном запуске — запустите снова.
+
+### Запуск и остановка вручную
+
+```sh
+cd ~/go2rtc && go2rtc -c go2rtc.yaml                               # в этом окне; остановка — Ctrl+C
+cd ~/go2rtc && nohup go2rtc -c go2rtc.yaml > go2rtc.log 2>&1 &    # в фоне; журнал — ~/go2rtc/go2rtc.log
+curl -X POST "http://127.0.0.1:1984/api/exit?code=0"               # остановить фоновый
+pkill -f 'go2rtc -c'                                               # или так, если API недоступен
+```
+
+Процесс ищется по командной строке (`pkill -f`), а не по имени: если Termux запускает программы через системный загрузчик, имя процесса — `linker64`.
+
+Перед запуском службы или Termux:Boot go2rtc, запущенный вручную, нужно остановить — иначе порты заняты.
 
 ### Служба termux-services
 
-go2rtc работает как служба runit: запускается вместе с Termux и поднимается заново, если завершился.
+go2rtc работает как служба runit: запускается вместе с Termux и поднимается заново, если завершился (в том числе после «Save» в веб-интерфейсе).
 
-1. Проверить, что службы запущены:
+**Установка скриптом:** `pkg install termux-services`, полностью закрыть Termux (Exit в уведомлении) и открыть снова, затем `curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/install.sh | sh -s -- --service`.
+
+**Установка вручную:**
+
+1. `pkg install termux-services`, затем проверить, что службы запущены:
 
    ```sh
    echo $SVDIR
    pgrep -a runsvdir
    ```
 
-   Если обе команды ничего не вывели (Termux не перезапускали после установки `termux-services`), полностью закройте Termux (Exit в уведомлении) и откройте снова. Для текущей сессии можно и так: `source $PREFIX/etc/profile.d/start-services.sh`.
+   Если обе команды ничего не вывели, полностью закройте Termux (Exit в уведомлении) и откройте снова. Для текущей сессии можно и так: `source $PREFIX/etc/profile.d/start-services.sh`.
 
-2. Остановить go2rtc, запущенный вручную (иначе служба не займёт порты), и создать службу:
+2. Остановить go2rtc, запущенный вручную, и создать службу:
 
    ```sh
-   pkill -x go2rtc
-   mkdir -p $PREFIX/var/service/go2rtc/log
+   pkill -f 'go2rtc -c'
+   mkdir -p ~/go2rtc $PREFIX/var/service/go2rtc/log
    cat > $PREFIX/var/service/go2rtc/run <<'EOF'
    #!/data/data/com.termux/files/usr/bin/sh
    cd ~/go2rtc
@@ -146,35 +169,102 @@ go2rtc работает как служба runit: запускается вме
 | `sv restart go2rtc` | перезапуск после правки конфига |
 | `sv down go2rtc` / `sv up go2rtc` | остановить / запустить |
 | `sv-disable go2rtc` / `sv-enable go2rtc` | убрать из автозапуска / вернуть |
+| `sv status go2rtc` | состояние |
 | `tail -f $PREFIX/var/log/sv/go2rtc/current` | журнал в реальном времени |
-| `curl -X POST "http://127.0.0.1:1984/api/exit?code=0"` | перезапуск через API (служба поднимет go2rtc заново) |
+
+**Удаление службы** (сама программа остаётся — её можно запускать вручную):
+
+```sh
+sv down go2rtc
+sv-disable go2rtc
+rm -rf $PREFIX/var/service/go2rtc $PREFIX/var/log/sv/go2rtc
+```
+
+Или скриптом: `curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/install.sh | sh -s -- --simple` — переставит программу и уберёт службу и автозапуск.
+
+### Termux:Boot — запуск при загрузке телефона
+
+Альтернатива службе: [Termux:Boot](https://github.com/termux/termux-boot) — отдельное приложение проекта Termux, ставится **из того же источника, что и сам Termux** (F-Droid или GitHub; сборки из разных источников вместе не работают). После установки его нужно **один раз открыть**, иначе Android не даст ему запускаться при загрузке. Скрипты из `~/.termux/boot/` выполняются после загрузки телефона.
+
+Termux:Boot сам go2rtc не перезапускает, поэтому go2rtc запускается в простом цикле: завершился (упал, «Save» в веб-интерфейсе) — через 3 с запускается снова.
+
+**Установка скриптом:** `curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/install.sh | sh -s -- --boot` — создаст цикл и скрипт автозапуска и сразу запустит go2rtc.
+
+**Установка вручную:**
+
+```sh
+pkill -f 'go2rtc -c'
+mkdir -p ~/go2rtc ~/.termux/boot
+cat > ~/go2rtc/go2rtc-loop.sh <<'EOF'
+#!/data/data/com.termux/files/usr/bin/sh
+cd ~/go2rtc
+while :; do
+  go2rtc -c go2rtc.yaml >> go2rtc.log 2>&1
+  sleep 3
+done
+EOF
+cat > ~/.termux/boot/go2rtc <<'EOF'
+#!/data/data/com.termux/files/usr/bin/sh
+termux-wake-lock
+nohup ~/go2rtc/go2rtc-loop.sh >/dev/null 2>&1 &
+EOF
+chmod +x ~/go2rtc/go2rtc-loop.sh ~/.termux/boot/go2rtc
+nohup ~/go2rtc/go2rtc-loop.sh >/dev/null 2>&1 &     # запустить сейчас, не дожидаясь перезагрузки
+```
+
+| Команда | Действие |
+|---|---|
+| `pkill -f 'go2rtc -c'` | перезапуск (цикл запустит go2rtc снова через 3 с) |
+| `pkill -f go2rtc-loop.sh && pkill -f 'go2rtc -c'` | остановить до перезагрузки |
+| `nohup ~/go2rtc/go2rtc-loop.sh >/dev/null 2>&1 &` | запустить снова |
+| `tail -f ~/go2rtc/go2rtc.log` | журнал в реальном времени |
+
+Журнал `~/go2rtc/go2rtc.log` растёт без ограничения — время от времени его можно очищать: `: > ~/go2rtc/go2rtc.log`. Оптимизацию батареи для Termux и Termux:Boot лучше отключить.
+
+Службу termux-services можно запускать и из Termux:Boot (вместо цикла): скрипт `~/.termux/boot/start-services` со строками `termux-wake-lock` и `. $PREFIX/etc/profile.d/start-services.sh` — тогда службы, в том числе go2rtc, поднимутся при загрузке телефона без открытия Termux.
+
+**Удаление автозапуска** (программа остаётся):
+
+```sh
+pkill -f go2rtc-loop.sh && pkill -f 'go2rtc -c'
+rm -f ~/.termux/boot/go2rtc ~/go2rtc/go2rtc-loop.sh
+```
+
+Или скриптом: `curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/install.sh | sh -s -- --simple`.
 
 ### Проверка
 
 1. В браузере откройте `http://192.168.1.10:1984` и нажмите на поток `test`: должна идти таблица с бегущим счётчиком. Звук `test_av` в браузере включается значком динамика: плеер go2rtc сам выключает звук, если браузер запрещает автозапуск со звуком.
-2. В журнале не должно быть `netlinkrib`: `grep netlinkrib $PREFIX/var/log/sv/go2rtc/current`.
+2. В журнале не должно быть `netlinkrib` и `permission denied` (журнал — `~/go2rtc/go2rtc.log` при ручном запуске и Termux:Boot, `$PREFIX/var/log/sv/go2rtc/current` у службы).
 3. RTSP — любым плеером: `rtsp://192.168.1.10:8554/test_aac`.
 
 ### Обновление
 
-Тот же скрипт ставит последний релиз поверх прежнего, конфиг и служба не меняются:
+Тот же скрипт ставит последний релиз поверх прежнего; конфиг и способ запуска не меняются, служба и Termux:Boot перезапускаются сами (при ручном запуске — остановите и запустите go2rtc):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/install.sh | sh && sv restart go2rtc
+curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/install.sh | sh
 ```
 
-### Удаление
+### Удаление go2rtc
 
 ```sh
-sv down go2rtc                         # остановить
-sv-disable go2rtc                      # убрать из автозапуска
-rm -rf $PREFIX/var/service/go2rtc      # удалить службу (runsvdir сам остановит её надзор)
-rm -rf $PREFIX/var/log/sv/go2rtc       # журнал службы
-rm -f $PREFIX/bin/go2rtc               # программа
-rm -rf ~/go2rtc                        # конфиг — если больше не нужен
+curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/install.sh | sh -s -- --uninstall           # остановить, убрать службу и автозапуск, удалить программу; конфиг остаётся
+curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/install.sh | sh -s -- --uninstall --purge   # то же и каталог ~/go2rtc (конфиг, журнал)
 ```
 
-Если служба не создавалась, достаточно `pkill -x go2rtc` и двух последних строк. `termux-services`, `ffmpeg` и `resolv-conf` удаляются обычным `pkg uninstall`, если они не нужны другим программам.
+Вручную:
+
+```sh
+sv down go2rtc 2>/dev/null; sv-disable go2rtc 2>/dev/null           # служба, если была
+rm -rf $PREFIX/var/service/go2rtc $PREFIX/var/log/sv/go2rtc
+pkill -f go2rtc-loop.sh; rm -f ~/.termux/boot/go2rtc                # Termux:Boot, если был
+pkill -f 'go2rtc -c'                                                # запущенный go2rtc
+rm -f $PREFIX/bin/go2rtc                                            # программа
+rm -rf ~/go2rtc                                                     # конфиг и журнал — если больше не нужны
+```
+
+`termux-services`, `ffmpeg`, `resolv-conf` и приложение Termux:Boot удаляются отдельно (`pkg uninstall …`, настройки Android), если они не нужны другим программам.
 
 ### Сборка из исходников в Termux (необязательно)
 
