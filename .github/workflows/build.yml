@@ -1,4 +1,4 @@
-# Сборка go2rtc для Android (Termux, KSWEB): исходники AlexxIT/go2rtc по тегу, scripts/build.sh (patches/go2rtc, patches/go),
+# Сборка go2rtc для Android (Termux): исходники AlexxIT/go2rtc по тегу, scripts/build.sh (patches/go2rtc, patches/go),
 # GOOS=android, cgo, Android NDK (API 24), архитектуры arm64, arm, amd64. Релиз: <тег go2rtc>-android<N>.
 #
 # Когда собирается:
@@ -171,7 +171,7 @@ jobs:
           gover=$(grep -m1 '^go ' src/go.mod | cut -d' ' -f2)
           patches=$(cd self/patches && ls */*.patch | sed 's/^/- `/; s/$/`/')
           cat > notes.md <<EOF
-          go2rtc [$TAG](https://github.com/AlexxIT/go2rtc/releases/tag/$TAG) для Android 7+ (Termux, KSWEB).
+          go2rtc [$TAG](https://github.com/AlexxIT/go2rtc/releases/tag/$TAG) для Android 7+ (Termux).
 
           | Файл | Архитектура |
           |---|---|

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Проверка Android-сборки go2rtc без устройства: так ли она устроена, чтобы её запустил системный
-# загрузчик Android (Termux, KSWEB через /system/bin/linker64):
+# загрузчик Android (Termux на новых Android запускает программы через /system/bin/linker64):
 #   - PIE (ELF type DYN): статический EXEC загрузчик отвергает («unexpected e_type: 2»);
 #   - интерпретатор — системный загрузчик Android;
 #   - зависимости — только системные библиотеки Android;

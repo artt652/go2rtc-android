@@ -15,7 +15,7 @@ index 0000000..c615f37
 +	"syscall"
 +)
 +
-+// Apps that target Android 10+ (KSWEB, Termux builds that run programs through
++// Apps that target Android 10+ (e.g. Termux builds that run programs through
 +// the system linker) may not execve files from their writable data directory:
 +// SELinux denies it with EACCES (W^X). Such files are started the way
 +// termux-exec does it: through the system linker, which accepts PIE programs
