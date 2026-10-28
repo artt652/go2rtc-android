@@ -30,10 +30,17 @@
 
 ### Установка
 
+Два шага — **по одной команде**, вставлять вместе нельзя: `pkg` спросит подтверждение, и вместо ответа ему достанется следующая вставленная строка (`Abort.`).
+
 ```sh
-pkg install curl resolv-conf ffmpeg
+pkg upgrade -y && pkg install -y curl resolv-conf ffmpeg
+```
+
+```sh
 curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/install.sh | sh
 ```
+
+`pkg upgrade` — сначала обновить уже установленные пакеты: Termux обновляет пакеты непрерывно, и установка новых поверх старых (`… not upgraded`) может оставить несовместимые библиотеки.
 
 Скрипт сам выберет файл по архитектуре Termux, сверит SHA256 и поставит `go2rtc` в `$PREFIX/bin`. Потом спросит, как запускать go2rtc:
 
@@ -126,11 +133,11 @@ pkill -f 'go2rtc -c'                                               # или та
 
 go2rtc работает как служба runit: запускается вместе с Termux и поднимается заново, если завершился (в том числе после «Save» в веб-интерфейсе).
 
-**Установка скриптом:** `pkg install termux-services`, полностью закрыть Termux (Exit в уведомлении) и открыть снова, затем `curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/install.sh | sh -s -- --service`.
+**Установка скриптом:** `pkg install -y termux-services`, полностью закрыть Termux (Exit в уведомлении) и открыть снова, затем `curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/install.sh | sh -s -- --service`.
 
 **Установка вручную:**
 
-1. `pkg install termux-services`, затем проверить, что службы запущены:
+1. `pkg install -y termux-services`, затем проверить, что службы запущены:
 
    ```sh
    echo $SVDIR
@@ -271,7 +278,7 @@ rm -rf ~/go2rtc                                                     # конфи
 Если нужна своя сборка — тем же способом, что и в релизах, прямо в Termux. Занимает несколько минут и несколько сотен МБ на время работы.
 
 ```sh
-pkg install golang git
+pkg install -y golang git
 cd ~ && rm -rf go2rtc-src go2rtc-android
 git clone --depth 1 --branch v1.9.15 https://github.com/AlexxIT/go2rtc go2rtc-src
 git clone --depth 1 https://github.com/artt652/go2rtc-android
