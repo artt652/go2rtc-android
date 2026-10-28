@@ -111,8 +111,10 @@ php -r '$s=stream_socket_client("udp://8.8.8.8:53");echo strtok(stream_socket_ge
 Настоящая камера — строка вида `door: rtsp://логин:пароль@192.168.1.20:554/stream2`. Подпись и время в кадре даёт `drawtext`, но это перекодирование на телефоне и заметная нагрузка на процессор:
 
 ```yaml
-  door_text: ffmpeg:door#video=h264#drawtext=x=10:y=10:fontsize=28:fontcolor=white:box=1:boxcolor=black@0.5:fontfile=/system/fonts/Roboto-Regular.ttf:text='Входная дверь %{localtime\:%H\:%M\:%S}'
+  door_text: ffmpeg:door#video=h264#drawtext=x=10:y=10:fontsize=28:fontcolor=white:box=1:boxcolor=black@0.5:fontfile=/system/fonts/Roboto-Regular.ttf:text='Входная дверь %{localtime\:%X}'
 ```
+
+`%X` — время `ЧЧ:ММ:СС`, `%d.%m.%Y` — дата. Двоеточий в самом формате избегайте: ffmpeg снимает экранирование `\:` один раз, и `%H\:%M\:%S` превращается в лишние аргументы (`%{localtime} requires at most 1 arguments`).
 
 go2rtc читает конфиг только при старте: после правки его нужно перезапустить (см. ниже для своего способа запуска). «Save» в веб-интерфейсе сохраняет конфиг и завершает go2rtc (на Android он не может перезапустить себя — см. «Патчи»): служба и Termux:Boot запускают его заново сами, при ручном запуске — запустите снова.
 
