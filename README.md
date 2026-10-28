@@ -30,17 +30,11 @@
 
 ### Установка
 
-Два шага — **по одной команде**, вставлять вместе нельзя: `pkg` спросит подтверждение, и вместо ответа ему достанется следующая вставленная строка (`Abort.`).
-
 ```sh
-pkg upgrade -y && pkg install -y curl resolv-conf ffmpeg
+pkg upgrade -y && pkg install -y curl resolv-conf ffmpeg && curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/install.sh | sh
 ```
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/artt652/go2rtc-android/main/install.sh | sh
-```
-
-`pkg upgrade` — сначала обновить уже установленные пакеты: Termux обновляет пакеты непрерывно, и установка новых поверх старых (`… not upgraded`) может оставить несовместимые библиотеки.
+Одной строкой: сначала обновляются установленные пакеты (Termux обновляет пакеты непрерывно, и новые поверх необновлённых — `… not upgraded` — могут оставить несовместимые библиотеки), затем ставятся `curl`, `resolv-conf` и `ffmpeg`, затем go2rtc. Если разбить на несколько строк, вставлять их по одной: иначе вопрос `pkg` получит вместо ответа следующую вставленную строку (`Abort.`).
 
 Скрипт сам выберет файл по архитектуре Termux, сверит SHA256 и поставит `go2rtc` в `$PREFIX/bin`. Потом спросит, как запускать go2rtc:
 
